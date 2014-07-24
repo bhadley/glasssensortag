@@ -188,8 +188,31 @@ public class BluetoothLeService extends Service {
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt,
                                             BluetoothGattCharacteristic characteristic) {
-        	Log.i(TAG, "onCharacteristicChanged");
+        	Log.i(TAG, "onCharacteristicChanged: " + characteristic.getInstanceId());
+        	
+            // Multiply x and y with -1 so that the values correspond with our pretty
+            // pictures in the app.
+            float x = shortSignedAtOffset(characteristic, 0) * (2000f / 65536f) * -1;
+            float y = shortSignedAtOffset(characteristic, 2) * (2000f / 65536f) * -1;
+            float z = shortSignedAtOffset(characteristic, 4) * (2000f / 65536f);
+
+            Log.i(TAG, "I WILL CRY IF THIS IS REAL DATA: " + x + " , " + y + " , " + z);
+            //model.setMagnetometer(x, y, z);
+        	
         }
+        
+        private Integer shortSignedAtOffset(BluetoothGattCharacteristic c, int offset) {
+            Integer lowerByte = c.getIntValue(FORMAT_UINT8, offset);
+            Integer upperByte = c.getIntValue(FORMAT_SINT8, offset + 1); // Note:
+                                                                         // interpret
+                                                                         // MSB as
+                                                                         // signed.
+
+            return (upperByte << 8) + lowerByte;
+          }
+
+        
+        
     };
  	
     
@@ -282,6 +305,7 @@ public class BluetoothLeService extends Service {
         // parameter to false.
         //final BleGattExecutor executor = new BleGattExecutor();
         mBluetoothGatt = device.connectGatt(this, false, mGattCallback);
+        
         Log.d(TAG, "Trying to create a new connection.");
         mBluetoothDeviceAddress = address;
         mConnectionState = STATE_CONNECTING;
@@ -366,7 +390,7 @@ public class BluetoothLeService extends Service {
 	    mBluetoothGatt.setCharacteristicNotification(magnetDataCharacteristic, true); //Enabled locally
 
 	    BluetoothGattDescriptor config = magnetDataCharacteristic.getDescriptor(CCC);
-	    config.setValue(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE);
+	    config.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
 	    boolean status = mBluetoothGatt.writeDescriptor(config); //Enabled remotely
 	    Log.i(TAG, "status of enabling magnetometer notifications: "+ status);
 	}

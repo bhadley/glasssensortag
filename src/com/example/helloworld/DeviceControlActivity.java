@@ -20,6 +20,7 @@ public class DeviceControlActivity extends Activity {
     private String mDeviceAddress;
     private BluetoothLeService mBluetoothLeService;
  
+    boolean sensorOn = false;
     
     // Code to manage Service lifecycle.
     private final ServiceConnection mServiceConnection = new ServiceConnection() {
@@ -59,9 +60,16 @@ public class DeviceControlActivity extends Activity {
      */
 	@Override
     public boolean onKeyDown(int keycode, KeyEvent event) {
-        mBluetoothLeService.turnOnMagnetometer();
-        mBluetoothLeService.enableMagnetometerNotifications();
-       
+		if (sensorOn == false) {
+			mBluetoothLeService.turnOnMagnetometer();
+			
+			Log.i("BLE", "turn on magnetometer");
+			sensorOn = true;
+		}
+		else {
+			mBluetoothLeService.enableMagnetometerNotifications();
+			Log.i("BLE", "enable notifications");
+		}
         return false;
          
     }
