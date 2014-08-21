@@ -19,6 +19,13 @@ import android.util.Log;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
+
+import sample.ble.sensortag.sensor.TiAccelerometerSensor;
+import sample.ble.sensortag.sensor.TiHumiditySensor;
+import sample.ble.sensortag.sensor.TiTemperatureSensor;
+
+import com.firebase.client.Firebase;
+
 import static android.bluetooth.BluetoothGattCharacteristic.FORMAT_SINT8;
 import static android.bluetooth.BluetoothGattCharacteristic.FORMAT_UINT8;
 
@@ -34,7 +41,8 @@ public class BluetoothLeService extends Service {
     private String mBluetoothDeviceAddress;
     private BluetoothGatt mBluetoothGatt;
     private int mConnectionState = STATE_DISCONNECTED;
- 
+    private int numVals =0;
+    private int numVals2 =0;
     private static final int STATE_DISCONNECTED = 0;
     private static final int STATE_CONNECTING = 1;
     private static final int STATE_CONNECTED = 2;
@@ -49,7 +57,11 @@ public class BluetoothLeService extends Service {
             "com.example.bluetooth.le.ACTION_DATA_AVAILABLE";
     public final static String EXTRA_DATA =
             "com.example.bluetooth.le.EXTRA_DATA";
-    
+	private final long START_TIME = System.nanoTime();
+	private double previousReading = System.nanoTime();
+    Firebase accData = new Firebase("https://labapp.firebaseio.com/accData");
+    Firebase tempData = new Firebase("https://labapp.firebaseio.com/tempData");
+    Firebase humidityData = new Firebase("https://labapp.firebaseio.com/humidityData");
     public static abstract class ServiceAction {
         public enum ActionType {
             NONE,
@@ -183,34 +195,68 @@ public class BluetoothLeService extends Service {
             currentAction = null;
             execute(gatt);
         }
-        
+
         
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt,
                                             BluetoothGattCharacteristic characteristic) {
-        	Log.i(TAG, "onCharacteristicChanged: " + characteristic.getInstanceId());
         	
-            // Multiply x and y with -1 so that the values correspond with our pretty
-            // pictures in the app.
-            float x = shortSignedAtOffset(characteristic, 0) * (2000f / 65536f) * -1;
-            float y = shortSignedAtOffset(characteristic, 2) * (2000f / 65536f) * -1;
-            float z = shortSignedAtOffset(characteristic, 4) * (2000f / 65536f);
+        	String sensorUUID = characteristic.getService().getUuid().toString();
+        	Log.i(TAG, "onCharacteristicChanged: " + sensorUUID);
+        	TiAccelerometerSensor accSensor = new TiAccelerometerSensor();
+        	TiTemperatureSensor tempSensor = new TiTemperatureSensor();
+        	TiHumiditySensor humiditySensor = new TiHumiditySensor();
+        	Log.i(TAG, sensorUUID + " is equal to? " + accSensor.getServiceUUID() + " " + tempSensor.getServiceUUID());
+        	if (sensorUUID.equals(accSensor.getServiceUUID())) {
+        		float[] data = accSensor.parse(characteristic);
+            //double ambient = extractAmbientTemperature(characteristic);
+            //double target = extractTargetTemperature(c, ambient);
+            //Log.i(TAG, "Temperature: " + data[0] + " degress");
+        		numVals+=1;
+        		double elapsedSecondsTotal = (System.nanoTime() - START_TIME)*(Math.pow(10,-9));
+   		 		accData.child(numVals+"").setValue(elapsedSecondsTotal + " , " + data[0] + " , " + data[1] + " , " + data[2]);
+        	}
+        	else if (sensorUUID.equals(tempSensor.getServiceUUID())) {
+        	
+        		double temp = tempSensor.parse(characteristic)[0];
+        		tempData.setValue(temp);
+        	}
+        	else if (sensorUUID.equals(humiditySensor.getServiceUUID())) {
+        		double temp = humiditySensor.parse(characteristic);
+        		humidityData.setValue(temp);
+        	}
+            //accXFB.setValue(data[0]);
+            //accYFB.setValue(data[1]);
+            //accZFB.setValue(data[2]);
 
-            Log.i(TAG, "I WILL CRY IF THIS IS REAL DATA: " + x + " , " + y + " , " + z);
-            //model.setMagnetometer(x, y, z);
-        	
         }
-        
-        private Integer shortSignedAtOffset(BluetoothGattCharacteristic c, int offset) {
+
+        private double extractAmbientTemperature(BluetoothGattCharacteristic c) {
+            int offset = 2;
+            return shortUnsignedAtOffset(c, offset) / 128.0;
+        }
+
+        /**
+         * Gyroscope, Magnetometer, Barometer, IR temperature
+         * all store 16 bit two's complement values in the awkward format
+         * LSB MSB, which cannot be directly parsed as getIntValue(FORMAT_SINT16, offset)
+         * because the bytes are stored in the "wrong" direction.
+         *
+         * This function extracts these 16 bit two's complement values.
+         * */
+        private  Integer shortSignedAtOffset(BluetoothGattCharacteristic c, int offset) {
             Integer lowerByte = c.getIntValue(FORMAT_UINT8, offset);
-            Integer upperByte = c.getIntValue(FORMAT_SINT8, offset + 1); // Note:
-                                                                         // interpret
-                                                                         // MSB as
-                                                                         // signed.
+            Integer upperByte = c.getIntValue(FORMAT_SINT8, offset + 1); // Note: interpret MSB as signed.
 
             return (upperByte << 8) + lowerByte;
-          }
+        }
 
+        private  Integer shortUnsignedAtOffset(BluetoothGattCharacteristic c, int offset) {
+            Integer lowerByte = c.getIntValue(FORMAT_UINT8, offset);
+            Integer upperByte = c.getIntValue(FORMAT_UINT8, offset + 1); // Note: interpret MSB as unsigned.
+
+            return (upperByte << 8) + lowerByte;
+        }
         
         
     };
@@ -360,19 +406,21 @@ public class BluetoothLeService extends Service {
 	* sensor. It must be called AFTER the onServicesDiscovered callback
 	* is received.
 	*/
-	public void turnOnMagnetometer() {
-	    UUID magnetServiceUuid = UUID.fromString("f000aa30-0451-4000-b000-000000000000");
-	    UUID magnetConfigUuid = UUID.fromString("f000aa32-0451-4000-b000-000000000000");
+	public void turnOnSensor(String serviceUUID, String configUUID) {
+	    UUID magnetServiceUuid = UUID.fromString(serviceUUID);
+	    UUID magnetConfigUuid = UUID.fromString(configUUID);
 
 	    BluetoothGattService magnetService = mBluetoothGatt.getService(magnetServiceUuid);
+	    Log.i("BLE", "this is probably null"+ magnetService.getUuid());
 	    BluetoothGattCharacteristic config = magnetService.getCharacteristic(magnetConfigUuid);
+	    
 	    config.setValue(new byte[]{1}); //NB: the config value is different for the Gyroscope
 	    mBluetoothGatt.writeCharacteristic(config);
 	}
 	
-	public BluetoothGattCharacteristic getMagnetometerCharacteristic() {
-	    UUID magnetServiceUuid = UUID.fromString("f000aa30-0451-4000-b000-000000000000");
-	    UUID magnetConfigUuid = UUID.fromString("f000aa32-0451-4000-b000-000000000000");
+	public BluetoothGattCharacteristic getSensorCharacteristic(String serviceUUID, String configUUID) {
+	    UUID magnetServiceUuid = UUID.fromString(serviceUUID);
+	    UUID magnetConfigUuid = UUID.fromString(configUUID);
 
 	    BluetoothGattService magnetService = mBluetoothGatt.getService(magnetServiceUuid);
 	    BluetoothGattCharacteristic config = magnetService.getCharacteristic(magnetConfigUuid);
@@ -380,9 +428,9 @@ public class BluetoothLeService extends Service {
 	
 	}
 	
-	public void enableMagnetometerNotifications() {
-	    UUID magnetServiceUuid = UUID.fromString("f000aa30-0451-4000-b000-000000000000");
-	    UUID magnetDataUuid = UUID.fromString("f000aa31-0451-4000-b000-000000000000");
+	public void enableSensorNotifications(String serviceUUID, String dataUUID) {
+	    UUID magnetServiceUuid = UUID.fromString(serviceUUID);
+	    UUID magnetDataUuid = UUID.fromString(dataUUID);
 	    UUID CCC = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
 
 	    BluetoothGattService magnetService = mBluetoothGatt.getService(magnetServiceUuid);
@@ -393,5 +441,16 @@ public class BluetoothLeService extends Service {
 	    config.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
 	    boolean status = mBluetoothGatt.writeDescriptor(config); //Enabled remotely
 	    Log.i(TAG, "status of enabling magnetometer notifications: "+ status);
+	}
+	
+	public void writePeriod(String serviceUUID, String periodUUID) {
+		UUID magnetServiceUuid = UUID.fromString(serviceUUID);
+		UUID sensorperiodUUID = UUID.fromString(periodUUID);
+	    BluetoothGattService magnetService = mBluetoothGatt.getService(magnetServiceUuid);
+	    BluetoothGattCharacteristic config = magnetService.getCharacteristic(sensorperiodUUID);
+	    config.setValue(new byte[]{(byte) 10}); //NB: the config value is different for the Gyroscope
+	    mBluetoothGatt.writeCharacteristic(config);
+		
+		
 	}
 }

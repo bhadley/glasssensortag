@@ -10,6 +10,7 @@ import android.bluetooth.BluetoothManager;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 
 public class MainActivity extends Activity {
 	
@@ -47,6 +48,7 @@ public class MainActivity extends Activity {
         mBluetoothAdapter.startLeScan(mLeScanCallback);
          
     }
+    
     
 
 }

@@ -1,15 +1,19 @@
 package com.example.helloworld;
 
+import com.firebase.client.Firebase;
+
 import android.app.Activity;
+import android.bluetooth.BluetoothGattCharacteristic;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.os.SystemClock;
 import android.util.Log;
 import android.view.KeyEvent;
 
-
+import sample.ble.sensortag.sensor.*;
 public class DeviceControlActivity extends Activity {
     private final static String TAG = "BETH"; //DeviceControlActivity.class.getSimpleName();
  
@@ -52,7 +56,7 @@ public class DeviceControlActivity extends Activity {
         
         Intent gattServiceIntent = new Intent(this, BluetoothLeService.class);
         bindService(gattServiceIntent, mServiceConnection, BIND_AUTO_CREATE);
-        
+
     }
 
     /*
@@ -60,19 +64,42 @@ public class DeviceControlActivity extends Activity {
      */
 	@Override
     public boolean onKeyDown(int keycode, KeyEvent event) {
+		Log.i("BLE", "on key down");
+		TiAccelerometerSensor sensor = new TiAccelerometerSensor();
+		//TiTemperatureSensor tempSensor = new TiTemperatureSensor();
+		//TiHumiditySensor humiditySensor = new TiHumiditySensor();
 		if (sensorOn == false) {
-			mBluetoothLeService.turnOnMagnetometer();
-			
+			SystemClock.sleep(1000);
+			mBluetoothLeService.turnOnSensor(sensor.getServiceUUID(), sensor.getConfigUUID());
+			SystemClock.sleep(1000);
+			//mBluetoothLeService.turnOnSensor(tempSensor.getServiceUUID(), tempSensor.getConfigUUID());
+			//SystemClock.sleep(1000);
+			//mBluetoothLeService.turnOnSensor(humiditySensor.getServiceUUID(), humiditySensor.getConfigUUID());
+			//SystemClock.sleep(1000);
+			mBluetoothLeService.writePeriod(sensor.getServiceUUID(), sensor.UUID_PERIOD);
+			SystemClock.sleep(1000);
+			mBluetoothLeService.enableSensorNotifications(sensor.getServiceUUID(), sensor.getDataUUID());
+			//SystemClock.sleep(1000);
+			//mBluetoothLeService.enableSensorNotifications(tempSensor.getServiceUUID(), tempSensor.getDataUUID());
+			//SystemClock.sleep(1000);
+			//mBluetoothLeService.enableSensorNotifications(humiditySensor.getServiceUUID(), humiditySensor.getDataUUID());
+			SystemClock.sleep(1000);
 			Log.i("BLE", "turn on magnetometer");
 			sensorOn = true;
 		}
 		else {
-			mBluetoothLeService.enableMagnetometerNotifications();
+			
 			Log.i("BLE", "enable notifications");
 		}
         return false;
          
     }
+	
+	 @Override
+	    public void onStop() {
+	        super.onStop();
+	    }
+	
 	
 
 	
